@@ -47,9 +47,23 @@ export const RepoEmbeddingJobNode: FC<RepoEmbeddingJobNodeProps> = ({
                 </div>
                 <div className="d-flex flex-column ml-3">
                     {repo && revision ? (
+<<<<<<< HEAD
                         <Link to={`${repo.url}@${revision.oid}`}>
                             {repo.name}@{revision.abbreviatedOID}
                         </Link>
+=======
+                        isSourcegraphApp ? (
+                            <>
+                                {repo.name}@{revision.abbreviatedOID}
+                            </>
+                        ) : (
+                            <Link to={`${repo.url}@${revision.oid}`}>
+                                {repo.name}@{revision.abbreviatedOID}
+                            </Link>
+                        )
+                    ) : repo ? (
+                        <>{repo.name}</>
+>>>>>>> 1dd6db4e2d (Allow for null revision resolver when using repo embeddings job's empty revision string (#54879))
                     ) : (
                         <div>Unknown repository</div>
                     )}
