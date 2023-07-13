@@ -1,10 +1,10 @@
 import { lazyComponent } from '@sourcegraph/shared/src/util/lazyComponent'
 
 import { RedirectRoute } from '../../../components/RedirectRoute'
-import { RepoSettingsAreaRoute } from '../../../repo/settings/RepoSettingsArea'
+import type { RepoSettingsAreaRoute } from '../../../repo/settings/RepoSettingsArea'
 import { repoSettingsAreaRoutes } from '../../../repo/settings/routes'
 
-import { RepoSettingsPermissionsPageProps } from './RepoSettingsPermissionsPage'
+import type { RepoSettingsPermissionsPageProps } from './RepoSettingsPermissionsPage'
 
 const RepoSettingsPermissionsPage = lazyComponent<RepoSettingsPermissionsPageProps, 'RepoSettingsPermissionsPage'>(
     () => import('./RepoSettingsPermissionsPage'),

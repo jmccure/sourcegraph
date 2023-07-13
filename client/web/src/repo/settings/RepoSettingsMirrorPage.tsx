@@ -1,4 +1,4 @@
-import React, { FC, useEffect, useState } from 'react'
+import React, { type FC, useEffect, useState } from 'react'
 
 import { mdiChevronDown, mdiChevronUp, mdiLock } from '@mdi/js'
 import classNames from 'classnames'
@@ -27,7 +27,7 @@ import {
 
 import { LogOutput } from '../../components/LogOutput'
 import { PageTitle } from '../../components/PageTitle'
-import {
+import type {
     CheckMirrorRepositoryConnectionResult,
     CheckMirrorRepositoryConnectionVariables,
     RecloneRepositoryResult,

@@ -1,9 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react'
+import type React from 'react'
+// Can't mix default and named type imports
+// eslint-disable-next-line no-duplicate-imports
+import { useEffect, useRef, useState } from 'react'
 
 import { Subject, Subscription } from 'rxjs'
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators'
 
-import { PANEL_POSITIONS } from './constants'
+import type { PANEL_POSITIONS } from './constants'
 
 const STORAGE_KEY_PREFIX = 'ResizePanel:'
 

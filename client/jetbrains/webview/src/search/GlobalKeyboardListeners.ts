@@ -1,4 +1,7 @@
-import React, { useEffect, useCallback } from 'react'
+import type React from 'react'
+// Can't mix default and named type imports
+// eslint-disable-next-line no-duplicate-imports
+import { useEffect, useCallback } from 'react'
 
 import { onWindowClose } from './js-to-java-bridge'
 

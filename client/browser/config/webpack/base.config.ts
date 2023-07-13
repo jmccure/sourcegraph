@@ -2,7 +2,10 @@ import path from 'path'
 
 import CssMinimizerWebpackPlugin from 'css-minimizer-webpack-plugin'
 import MiniCssExtractPlugin from 'mini-css-extract-plugin'
-import webpack, { optimize } from 'webpack'
+import type webpack from 'webpack'
+// Can't mix default and named type imports
+// eslint-disable-next-line no-duplicate-imports
+import { optimize } from 'webpack'
 
 import {
     ROOT_PATH,

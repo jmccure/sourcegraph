@@ -1,11 +1,11 @@
-import { extendedMatch, Fzf, FzfResultItem, Tiebreaker } from 'fzf'
+import { extendedMatch, Fzf, type FzfResultItem, type Tiebreaker } from 'fzf'
 
-import { HighlightedLinkProps, RangePosition } from '../components/fuzzyFinder/HighlightedLink'
+import type { HighlightedLinkProps, RangePosition } from '../components/fuzzyFinder/HighlightedLink'
 
-import { FuzzySearch, FuzzySearchParameters, FuzzySearchResult } from './FuzzySearch'
-import { SearchValue } from './SearchValue'
+import { FuzzySearch, type FuzzySearchParameters, type FuzzySearchResult } from './FuzzySearch'
+import type { SearchValue } from './SearchValue'
 import { SearchValueRankingCache } from './SearchValueRankingCache'
-import { createUrlFunction } from './WordSensitiveFuzzySearch'
+import type { createUrlFunction } from './WordSensitiveFuzzySearch'
 
 function sortByTiebreakers<T>(values: FzfResultItem<T>[], tiebreakers: Tiebreaker<T>[]): FzfResultItem<T>[] {
     return values.sort((a, b) => {

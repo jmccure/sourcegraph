@@ -17,7 +17,7 @@ import {
     addScheduledRelease,
     loadReleaseConfig,
     newReleaseFromInput,
-    ReleaseConfig,
+    type ReleaseConfig,
     getActiveRelease,
     removeScheduledRelease,
     saveReleaseConfig,
@@ -34,10 +34,10 @@ import {
     closeTrackingIssue,
     commentOnIssue,
     createChangesets,
-    CreatedChangeset,
+    type CreatedChangeset,
     createLatestRelease,
     createTag,
-    Edit,
+    type Edit,
     ensureTrackingIssues,
     getAuthenticatedGitHubClient,
     getTrackingIssue,
@@ -47,7 +47,7 @@ import {
     releaseBlockerLabel,
     releaseName,
 } from './github'
-import { calendarTime, ensureEvent, EventOptions, getClient } from './google-calendar'
+import { calendarTime, ensureEvent, type EventOptions, getClient } from './google-calendar'
 import { postMessage, slackURL } from './slack'
 import {
     bakeAWSExecutorsSteps,
@@ -81,7 +81,7 @@ import {
     validateNoOpenBackports,
     validateNoReleaseBlockers,
     verifyWithInput,
-    ReleaseTag,
+    type ReleaseTag,
 } from './util'
 
 const sed = process.platform === 'linux' ? 'sed' : 'gsed'

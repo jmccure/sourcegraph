@@ -1,7 +1,7 @@
 import { CaseInsensitiveFuzzySearch } from '../../fuzzyFinder/CaseInsensitiveFuzzySearch'
-import { FuzzySearch, SearchIndexing } from '../../fuzzyFinder/FuzzySearch'
-import { SearchValue } from '../../fuzzyFinder/SearchValue'
-import { createUrlFunction, WordSensitiveFuzzySearch } from '../../fuzzyFinder/WordSensitiveFuzzySearch'
+import type { FuzzySearch, SearchIndexing } from '../../fuzzyFinder/FuzzySearch'
+import type { SearchValue } from '../../fuzzyFinder/SearchValue'
+import { type createUrlFunction, WordSensitiveFuzzySearch } from '../../fuzzyFinder/WordSensitiveFuzzySearch'
 
 // The default value of 80k filenames is picked from the following observations:
 // - case-insensitive search is slow but works in the torvalds/linux repo (72k files)

@@ -1,12 +1,17 @@
 import { useApolloClient } from '@apollo/client'
-import { MockedResponse } from '@apollo/client/testing'
+import type { MockedResponse } from '@apollo/client/testing'
 import * as H from 'history'
 
 import { getDocumentNode } from '@sourcegraph/http-client'
-import { Settings } from '@sourcegraph/shared/src/settings/settings'
+import type { Settings } from '@sourcegraph/shared/src/settings/settings'
 import { NOOP_TELEMETRY_SERVICE } from '@sourcegraph/shared/src/telemetry/telemetryService'
 
-import { FileNamesResult, FuzzyFinderRepoResult, FuzzyFinderSymbolsResult, SymbolKind } from '../../graphql-operations'
+import {
+    type FileNamesResult,
+    type FuzzyFinderRepoResult,
+    type FuzzyFinderSymbolsResult,
+    SymbolKind,
+} from '../../graphql-operations'
 import { UserHistory } from '../useUserHistory'
 
 import { FUZZY_GIT_LSFILES_QUERY } from './FuzzyFiles'

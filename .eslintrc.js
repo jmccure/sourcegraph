@@ -39,6 +39,15 @@ const config = {
     'monorepo/no-relative-import': 'error',
     '@sourcegraph/sourcegraph/check-help-links': 'error',
     '@typescript-eslint/consistent-type-exports': 'warn',
+    '@typescript-eslint/consistent-type-imports': [
+      'warn',
+      {
+        fixStyle: 'inline-type-imports',
+        disallowTypeAnnotations: false,
+      },
+    ],
+    // This converts 'import {type foo} from ...' to 'import type {foo} from ...'
+    '@typescript-eslint/no-import-type-side-effects': ['warn'],
     'no-restricted-imports': [
       'error',
       {

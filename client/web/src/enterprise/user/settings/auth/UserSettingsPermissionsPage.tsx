@@ -2,7 +2,7 @@ import React, { useEffect } from 'react'
 
 import { Timestamp } from '@sourcegraph/branded/src/components/Timestamp'
 import { RepoLink } from '@sourcegraph/shared/src/components/RepoLink'
-import { TelemetryProps } from '@sourcegraph/shared/src/telemetry/telemetryService'
+import type { TelemetryProps } from '@sourcegraph/shared/src/telemetry/telemetryService'
 import {
     Container,
     useDebounce,
@@ -12,12 +12,12 @@ import {
     Input,
     Link,
     Badge,
-    BadgeProps,
+    type BadgeProps,
 } from '@sourcegraph/wildcard'
 
 import { usePageSwitcherPagination } from '../../../../components/FilteredConnection/hooks/usePageSwitcherPagination'
 import { PageTitle } from '../../../../components/PageTitle'
-import {
+import type {
     UserPermissionsInfoResult,
     UserPermissionsInfoVariables,
     PermissionsInfoRepositoryFields as INode,
@@ -27,7 +27,7 @@ import { useURLSyncedState } from '../../../../hooks'
 import { ActionContainer } from '../../../../repo/settings/components/ActionContainer'
 import { ExternalRepositoryIcon } from '../../../../site-admin/components/ExternalRepositoryIcon'
 import { PermissionsSyncJobsTable } from '../../../../site-admin/permissions-center/PermissionsSyncJobsTable'
-import { Table, IColumn } from '../../../../site-admin/UserManagement/components/Table'
+import { Table, type IColumn } from '../../../../site-admin/UserManagement/components/Table'
 import { eventLogger } from '../../../../tracking/eventLogger'
 
 import { scheduleUserPermissionsSync, UserPermissionsInfoQuery } from './backend'

@@ -1,12 +1,12 @@
-import { FC, useContext } from 'react'
+import { type FC, useContext } from 'react'
 
 import { mdiDownload, mdiOpenInNew } from '@mdi/js'
 import classNames from 'classnames'
 
-import { Badge, Button, H1, H3, Link, Text, Icon, BadgeVariantType } from '@sourcegraph/wildcard'
+import { Badge, Button, H1, H3, Link, Text, Icon, type BadgeVariantType } from '@sourcegraph/wildcard'
 
 import { tauriShellOpen } from '../../../../app/tauriIcpUtils'
-import { FooterWidget, SetupStepsContext, StepComponentProps } from '../../../../setup-wizard/components'
+import { FooterWidget, SetupStepsContext, type StepComponentProps } from '../../../../setup-wizard/components'
 import { AppSetupProgressBar } from '../components/AppSetupProgressBar'
 
 import styles from './AppInstallExtensionsSetupStep.module.scss'

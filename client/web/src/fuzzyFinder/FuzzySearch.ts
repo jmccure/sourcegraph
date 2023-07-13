@@ -1,6 +1,6 @@
-import { HighlightedLinkProps } from '../components/fuzzyFinder/HighlightedLink'
+import type { HighlightedLinkProps } from '../components/fuzzyFinder/HighlightedLink'
 
-import { SearchValueRankingCache } from './SearchValueRankingCache'
+import type { SearchValueRankingCache } from './SearchValueRankingCache'
 
 export interface FuzzySearchParameters {
     query: string

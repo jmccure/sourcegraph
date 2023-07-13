@@ -1,10 +1,10 @@
-import { FC, useMemo } from 'react'
+import { type FC, useMemo } from 'react'
 
 import { mdiInformation } from '@mdi/js'
 import { useLocation } from 'react-router-dom'
 
 import { ExternalServiceKind } from '@sourcegraph/shared/src/graphql-operations'
-import { TelemetryProps } from '@sourcegraph/shared/src/telemetry/telemetryService'
+import type { TelemetryProps } from '@sourcegraph/shared/src/telemetry/telemetryService'
 import { useLocalStorage, Button, Link, Alert, H2, H3, Icon, Text, Container } from '@sourcegraph/wildcard'
 
 import { LimitedAccessBanner } from '../LimitedAccessBanner'
@@ -12,7 +12,7 @@ import { PageTitle } from '../PageTitle'
 
 import { AddExternalServicePage } from './AddExternalServicePage'
 import { ExternalServiceCard } from './ExternalServiceCard'
-import { allExternalServices, AddExternalServiceOptions, gitHubAppConfig } from './externalServices'
+import { allExternalServices, type AddExternalServiceOptions, gitHubAppConfig } from './externalServices'
 
 import styles from './AddExternalServicesPage.module.scss'
 

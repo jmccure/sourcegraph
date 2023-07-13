@@ -1,10 +1,10 @@
 import React, { useMemo } from 'react'
 
 import { parseISO } from 'date-fns'
-import { Observable } from 'rxjs'
+import type { Observable } from 'rxjs'
 import { catchError, map } from 'rxjs/operators'
 
-import { asError, ErrorLike, isErrorLike, numberWithCommas } from '@sourcegraph/common'
+import { asError, type ErrorLike, isErrorLike, numberWithCommas } from '@sourcegraph/common'
 import { gql, dataOrThrowErrors } from '@sourcegraph/http-client'
 import {
     LoadingSpinner,
@@ -18,7 +18,7 @@ import {
 } from '@sourcegraph/wildcard'
 
 import { queryGraphQL } from '../../../backend/graphql'
-import { ProductLicenseInfoResult } from '../../../graphql-operations'
+import type { ProductLicenseInfoResult } from '../../../graphql-operations'
 import { formatUserCount } from '../../../productSubscription/helpers'
 import { ExpirationDate } from '../../productSubscription/ExpirationDate'
 import { ProductCertificate } from '../../productSubscription/ProductCertificate'

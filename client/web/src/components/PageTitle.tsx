@@ -1,4 +1,7 @@
-import React, { useEffect } from 'react'
+import type React from 'react'
+// Can't mix default and named type imports
+// eslint-disable-next-line no-duplicate-imports
+import { useEffect } from 'react'
 
 import { logger } from '@sourcegraph/common'
 import { screenReaderAnnounce } from '@sourcegraph/wildcard'

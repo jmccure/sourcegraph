@@ -38,7 +38,7 @@ import {
     Position,
 } from '@sourcegraph/wildcard'
 
-import {
+import type {
     RecloneRepositoryResult,
     RecloneRepositoryVariables,
     SettingsAreaRepositoryResult,
