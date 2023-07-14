@@ -11,7 +11,6 @@
 
     function scrollIntoView(node: HTMLElement, scroll: boolean) {
         if (scroll) {
-            console.log(scroll, node)
             node.scrollIntoView()
         }
     }

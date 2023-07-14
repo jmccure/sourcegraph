@@ -3,6 +3,7 @@
 
     import { afterNavigate, disableScrollHandling } from '$app/navigation'
     import { page } from '$app/stores'
+    import BottomPanel from '$lib/repo/BottomPanel.svelte'
     import FileTree from '$lib/repo/FileTree.svelte'
     import SidebarToggleButton from '$lib/repo/SidebarToggleButton.svelte'
     import { sidebarOpen } from '$lib/repo/stores'
@@ -10,16 +11,29 @@
     import { scrollAll } from '$lib/stores'
     import { createPromiseStore } from '$lib/utils'
 
-    import type { PageData } from './$types'
+    import type { LayoutData, Snapshot } from './$types'
 
-    export let data: PageData
+    export let data: LayoutData
+
+    export const snapshot: Snapshot = {
+        capture() {
+            return {
+                bottomPanel: bottomPanel.capture(),
+            }
+        },
+        restore(data) {
+            bottomPanel.restore(data.bottomPanel)
+        },
+    }
+
+    let bottomPanel: BottomPanel
 
     function last<T>(arr: T[]): T {
         return arr[arr.length - 1]
     }
 
-    const { value: treeOrError, set } = createPromiseStore<typeof data.treeEntries.deferred>()
-    $: set(data.treeEntries.deferred)
+    const { value: treeOrError, set } = createPromiseStore<LayoutData['deferred']['treeEntries']>()
+    $: set(data.deferred.treeEntries)
 
     const sidebarSize = getSeparatorPosition('repo-sidebar', 0.2)
     $: sidebarWidth = `max(200px, ${$sidebarSize * 100}%)`
@@ -52,8 +66,9 @@
     {#if $sidebarOpen}
         <Separator currentPosition={sidebarSize} />
     {/if}
-    <div class="content">
+    <div class="main">
         <slot />
+        <BottomPanel bind:this={bottomPanel} history={data.deferred.codeCommits}/>
     </div>
 </section>
 
@@ -81,7 +96,7 @@
         max-height: 100vh;
     }
 
-    .content {
+    .main {
         flex: 1;
         display: flex;
         flex-direction: column;
