@@ -8,7 +8,7 @@
     import { sidebarOpen } from '$lib/repo/stores'
     import Separator, { getSeparatorPosition } from '$lib/Separator.svelte'
     import { scrollAll } from '$lib/stores'
-    import { asStore } from '$lib/utils'
+    import { createPromiseStore } from '$lib/utils'
 
     import type { PageData } from './$types'
 
@@ -18,7 +18,8 @@
         return arr[arr.length - 1]
     }
 
-    $: treeOrError = asStore(data.treeEntries.deferred)
+    const { value: treeOrError, set } = createPromiseStore<typeof data.treeEntries.deferred>()
+    $: set(data.treeEntries.deferred)
 
     const sidebarSize = getSeparatorPosition('repo-sidebar', 0.2)
     $: sidebarWidth = `max(200px, ${$sidebarSize * 100}%)`
@@ -37,10 +38,10 @@
 
 <section>
     <div class="sidebar" class:open={$sidebarOpen} style:min-width={sidebarWidth} style:max-width={sidebarWidth}>
-        {#if !$treeOrError.loading && $treeOrError.data}
+        {#if $treeOrError}
             <FileTree
                 activeEntry={$page.params.path ? last($page.params.path.split('/')) : ''}
-                treeOrError={$treeOrError.data}
+                treeOrError={$treeOrError}
             >
                 <h3 slot="title">
                     <SidebarToggleButton />&nbsp; Files

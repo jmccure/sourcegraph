@@ -7,14 +7,20 @@
     import LoadingSpinner from '$lib/LoadingSpinner.svelte'
     import SidebarToggleButton from '$lib/repo/SidebarToggleButton.svelte'
     import { sidebarOpen } from '$lib/repo/stores'
-    import { asStore } from '$lib/utils'
+    import { createPromiseStore } from '$lib/utils'
 
     import type { PageData } from './$types'
 
     export let data: PageData
 
-    $: treeOrError = asStore(data.treeEntries.deferred)
-    $: commits = asStore(data.commits.deferred)
+    const { value: treeOrError, set: setTree } = createPromiseStore<typeof data.treeEntries.deferred>()
+    const {
+        pending: loadingCommits,
+        value: commits,
+        set: setCommits,
+    } = createPromiseStore<typeof data.commits.deferred>()
+    $: setTree(data.treeEntries.deferred)
+    $: setCommits(data.commits.deferred)
 </script>
 
 {#if !$sidebarOpen}
@@ -31,10 +37,10 @@
         </p>
     {/if}
 
-    {#if !$treeOrError.loading && $treeOrError.data && !isErrorLike($treeOrError.data)}
+    {#if $treeOrError && !isErrorLike($treeOrError)}
         <h3>Files and directories</h3>
         <ul class="files">
-            {#each $treeOrError.data.entries as entry}
+            {#each $treeOrError.entries as entry}
                 <li>
                     <a
                         data-sveltekit-preload-data={entry.isDirectory ? 'hover' : 'tap'}
@@ -50,10 +56,10 @@
 
     <h3 class="mt-3">Changes</h3>
     <ul class="commits">
-        {#if $commits.loading}
+        {#if $loadingCommits}
             <LoadingSpinner />
-        {:else if $commits.data}
-            {#each $commits.data as commit (commit.url)}
+        {:else if $commits}
+            {#each $commits as commit (commit.url)}
                 <li><Commit {commit} /></li>
             {/each}
         {/if}
