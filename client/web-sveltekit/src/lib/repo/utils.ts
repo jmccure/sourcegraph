@@ -2,7 +2,7 @@ import { resolvePath } from '@sveltejs/kit'
 
 import type { ResolvedRevision } from '$lib/web'
 
-const TREE_ROUTE_ID = '/[...repo]/(code)/-/tree/[...path]'
+const TREE_ROUTE_ID = '/[...repo=reporev]/(code)/-/tree/[...path]'
 
 /**
  * Returns a [segment, url] mapping for every segement in `path`.
