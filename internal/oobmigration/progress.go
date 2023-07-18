@@ -3,11 +3,14 @@ package oobmigration
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/sourcegraph/log"
 
 	"github.com/sourcegraph/sourcegraph/lib/output"
 )
+
+const MaxTime = 60 * 60 * 10
 
 // makeOutOfBandMigrationProgressUpdater returns a two functions: `update` should be called
 // when the updates to the progress of an out-of-band migration are made and should be reflected
@@ -18,8 +21,29 @@ func MakeProgressUpdater(out *output.Output, ids []int, animateProgress bool) (
 	cleanup func(),
 ) {
 	if !animateProgress || shouldDisableProgressAnimation() {
+		var percentages []float64
+
 		update = func(i int, m Migration) {
-			out.WriteLine(output.Linef("", output.StyleReset, "Migration #%d is %.8f%% complete", m.ID, m.Progress*100))
+			percentages = append(percentages, m.Progress*100)
+			if len(percentages) > MaxTime {
+				percentages = percentages[len(percentages)-MaxTime:]
+			}
+
+			// jesus christ take a stats class
+			n := len(percentages)
+			diff := percentages[len(percentages)-1] - percentages[0]
+			remainingPercentage := 100 - (m.Progress * 100)
+			remainingTime := time.Duration(remainingPercentage/diff*float64(n)) * time.Second
+
+			out.WriteLine(output.Linef("", output.StyleReset,
+				"Migration #%d is %.8f%% complete (%s remains, about %3d days, est from %.8f%% over %ds)",
+				m.ID,
+				m.Progress*100,
+				fmt.Sprintf("%15s", remainingTime),
+				int(remainingTime/time.Hour)/24,
+				diff,
+				n,
+			))
 		}
 		return update, func() {}
 	}

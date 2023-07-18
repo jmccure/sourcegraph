@@ -78,7 +78,7 @@ type TaggedMigrator interface {
 func RegisterAll(runner *oobmigration.Runner, noDelay bool, migrators []TaggedMigrator) error {
 	for _, migrator := range migrators {
 		options := oobmigration.MigratorOptions{Interval: migrator.Interval()}
-		if noDelay {
+		if noDelay || true {
 			options.Interval = time.Nanosecond
 		}
 

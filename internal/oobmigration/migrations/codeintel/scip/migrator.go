@@ -3,7 +3,9 @@ package scip
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"runtime"
+	"sort"
 	"time"
 
 	"github.com/keegancsmith/sqlf"
@@ -188,7 +190,11 @@ func (m *migrator) Up(ctx context.Context) (err error) {
 		p.Go(func() error { return m.up(ctx) })
 	}
 
-	return p.Wait()
+	if err := p.Wait(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (m *migrator) up(ctx context.Context) (err error) {
@@ -214,6 +220,35 @@ func (m *migrator) down(ctx context.Context) error {
 // run performs a batch of updates with the given driver function. Records with the given source version
 // will be selected for candidacy, and their version will match the given target version after an update.
 func (m *migrator) run(ctx context.Context, sourceVersion int, targetVersion int, driverFunc driverFunc) (err error) {
+	// fmt.Printf("> A\n")
+	start := time.Now()
+	lapTimer := start
+	lapTimes := map[string]time.Duration{}
+	lap := func(format string, args ...any) {
+		now := time.Now()
+		since := now.Sub(lapTimer)
+		lapTimer = now
+
+		if key := fmt.Sprintf(format, args...); key != "" {
+			lapTimes[key] = since
+		}
+	}
+	done := func(format string, args ...any) {
+		lapNames := make([]string, 0, len(lapTimes))
+		for lapName := range lapTimes {
+			lapNames = append(lapNames, lapName)
+		}
+		sort.Slice(lapNames, func(i, j int) bool { return lapTimes[lapNames[i]] > lapTimes[lapNames[j]] })
+
+		// for _, name := range lapNames {
+		// 	t := lapTimes[name]
+		// 	if t > time.Millisecond*100 {
+		// 		fmt.Printf("\t%-10s\t%s\n", fmt.Sprintf("%s:", t), name)
+		// 	}
+		// }
+		// fmt.Printf("> %s:\t%s\n", time.Since(start), fmt.Sprintf(format, args...))
+	}
+
 	tx, err := m.store.Transact(ctx)
 	if err != nil {
 		return err
@@ -228,14 +263,20 @@ func (m *migrator) run(ctx context.Context, sourceVersion int, targetVersion int
 		return nil
 	}
 
+	lap("selected dump %d", uploadID)
+
 	rowValues, err := m.processRows(ctx, tx, uploadID, sourceVersion, driverFunc)
 	if err != nil {
 		return err
 	}
 
+	lap("") // reset time
+
 	if err := m.updateBatch(ctx, tx, uploadID, targetVersion, rowValues); err != nil {
 		return err
 	}
+
+	lap("updated batch")
 
 	// After selecting a dump for migration, update the schema version bounds for that
 	// dump. We do this regardless if we actually migrated any rows to catch the case
@@ -255,8 +296,8 @@ func (m *migrator) run(ctx context.Context, sourceVersion int, targetVersion int
 	}
 	defer func() { err = basestore.CloseRows(rows, err) }()
 
+	var rowsUpserted, rowsDeleted int
 	if rows.Next() {
-		var rowsUpserted, rowsDeleted int
 		if err := rows.Scan(&rowsUpserted, &rowsDeleted); err != nil {
 			return err
 		}
@@ -264,6 +305,7 @@ func (m *migrator) run(ctx context.Context, sourceVersion int, targetVersion int
 		// do nothing with these values for now
 	}
 
+	done("upserted=%d deleted=%d", rowsUpserted, rowsDeleted)
 	return nil
 }
 
