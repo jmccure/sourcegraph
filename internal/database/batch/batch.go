@@ -31,6 +31,7 @@ type Inserter struct {
 	returningScanner     ReturningScanner
 	operations           *operations
 	commonAttrs          []attribute.KeyValue
+	NumFlushes           int
 }
 
 type ReturningScanner func(rows dbutil.Scanner) error
@@ -253,6 +254,8 @@ func (i *Inserter) Flush(ctx context.Context) (err error) {
 	combinedAttrs := append(operationAttrs, i.commonAttrs...)
 	ctx, _, endObservation := i.operations.flush.With(ctx, &err, observation.Args{Attrs: combinedAttrs})
 	defer endObservation(1, observation.Args{})
+
+	i.NumFlushes++
 
 	// Create a query with enough placeholders to match the current batch size. This should
 	// generally be the full querySuffix string, except for the last call to Flush which

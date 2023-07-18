@@ -29,7 +29,7 @@ func getEnv(name string, defaultValue int) int {
 var (
 	// NOTE: modified in tests
 	symbolsMigratorConcurrencyLevel      = getEnv("SYMBOLS_MIGRATOR_CONCURRENCY_LEVEL", 1)
-	symbolsMigratorSymbolRecordBatchSize = getEnv("SYMBOLS_MIGRATOR_UPLOAD_BATCH_SIZE", 10000)
+	symbolsMigratorSymbolRecordBatchSize = getEnv("SYMBOLS_MIGRATOR_UPLOAD_BATCH_SIZE", 25000)
 )
 
 type scipSymbolsMigrator struct {
@@ -57,7 +57,27 @@ func (m *scipSymbolsMigrator) ID() int                 { return 24 }
 func (m *scipSymbolsMigrator) Interval() time.Duration { return time.Second }
 
 func (m *scipSymbolsMigrator) MigrateUp(ctx context.Context, uploadID int, tx *basestore.Store, rows *sql.Rows) (_ [][]any, err error) {
+	fmt.Printf(">\n")
 	start := time.Now()
+	lapTimer := start
+	lapTimes := map[string]time.Duration{}
+	lap := func(format string, args ...any) {
+		now := time.Now()
+		lapTimes[fmt.Sprintf(format, args...)] = now.Sub(lapTimer)
+		lapTimer = now
+	}
+	done := func(format string, args ...any) {
+		lapNames := make([]string, 0, len(lapTimes))
+		for lapName := range lapTimes {
+			lapNames = append(lapNames, lapName)
+		}
+		sort.Slice(lapNames, func(i, j int) bool { return lapTimes[lapNames[i]] > lapTimes[lapNames[j]] })
+
+		for _, name := range lapNames {
+			fmt.Printf("\t%s:\t%s\n", lapTimes[name], name)
+		}
+		fmt.Printf("> %s:\t%s\n\n", time.Since(start), fmt.Sprintf(format, args...))
+	}
 
 	// Consume symbol_id/document_id pairs from the incoming rows
 	symbolInDocuments, err := readSymbolInDocuments(rows)
@@ -70,12 +90,16 @@ func (m *scipSymbolsMigrator) MigrateUp(ctx context.Context, uploadID int, tx *b
 	}
 	symbolIDs := flattenKeys(symbolIDMap)
 
+	lap("read %d rows", len(symbolInDocuments))
+
 	// Reconstruct the full symbol names for each of the symbol IDs in this batch
 	symbolNamesByID, err := readSymbolNamesBySymbolIDs(ctx, tx, uploadID, symbolIDs)
 	if err != nil {
 		return nil, err
 	}
+	lap("read %d symbol names", len(symbolNamesByID))
 	symbolNames := flattenValues(symbolNamesByID)
+	lap("flatten %d symbol names", len(symbolNames))
 
 	// An upload's symbols may be processed over several batches, and each symbol
 	// identifier needs to be unique per upload, so we track the highest symbol
@@ -103,19 +127,41 @@ func (m *scipSymbolsMigrator) MigrateUp(ctx context.Context, uploadID int, tx *b
 		return nil, err
 	}
 
+	lap("constructed cache of %d items", len(cache))
+	buffer := make([][]any, 0, len(symbolNames)*2)
+
+	// EXTRACTED FOR DEBUGGING
+	visit := func(segmentType string, segmentQuality *string, name string, id int, parentID *int) error {
+		buffer = append(buffer, []any{segmentType, segmentQuality, name, id, parentID})
+		return nil
+	}
+	if err := traverser(visit); err != nil {
+		return nil, err
+	}
+
+	lap("prepared %d lookups", len(buffer))
+	rowsX := 0
+
 	// Bulk insert the content of the tree / descriptor-no-suffix map
 	symbolNamePartInserter := func(ctx context.Context, symbolLookupInserter *batch.Inserter) error {
-		visit := func(segmentType string, segmentQuality *string, name string, id int, parentID *int) error {
-			return symbolLookupInserter.Insert(ctx, segmentType, segmentQuality, name, id, parentID)
+		for _, values := range buffer {
+			rowsX++
+			if err := symbolLookupInserter.Insert(ctx, values...); err != nil {
+				return err
+			}
 		}
-		return traverser(visit)
+
+		return nil
 	}
 
 	// In the same transaction but ouf-of-band from the row updates, batch-insert new
 	// symbol-lookup rows. These identifiers need to exist before the batch is complete.
-	if err := withSymbolLookupInserter(ctx, tx, uploadID, symbolNamePartInserter); err != nil {
+	if err := withSymbolLookupInserter(ctx, tx, uploadID, symbolNamePartInserter, func(format string, args ...any) { lap("lookups: "+format, args...) }); err != nil {
 		return nil, err
 	}
+
+	lap("inserted %d lookups", rowsX)
+	rowsY := 0
 
 	// Bulk insert descriptor/descriptor-no-suffix pairs with relations to their symbol
 	symbolRelationshipInserter := func(ctx context.Context, symbolLookupLeavesInserter *batch.Inserter) error {
@@ -123,6 +169,7 @@ func (m *scipSymbolsMigrator) MigrateUp(ctx context.Context, uploadID int, tx *b
 			symbolID := symbolInDocument.symbolID
 			ids := cache[symbolNamesByID[symbolID]]
 
+			rowsY++
 			if err := symbolLookupLeavesInserter.Insert(ctx, symbolID, ids.descriptorSuffixID, ids.fuzzyDescriptorSuffixID); err != nil {
 				return err
 			}
@@ -133,9 +180,11 @@ func (m *scipSymbolsMigrator) MigrateUp(ctx context.Context, uploadID int, tx *b
 
 	// In the same transaction but ouf-of-band from the row updates, batch-insert new
 	// symbol-lookup-leaves rows. These identifiers need to exist before the batch is complete.
-	if err := withSymbolLookupLeavesInserter(ctx, tx, uploadID, symbolRelationshipInserter); err != nil {
+	if err := withSymbolLookupLeavesInserter(ctx, tx, uploadID, symbolRelationshipInserter, func(format string, args ...any) { lap("leaves: "+format, args...) }); err != nil {
 		return nil, err
 	}
+
+	lap("inserted %d leaves", rowsY)
 
 	// Construct the updated tuples for the symbols rows we have locked in this transaction.
 	// Each (original) symbol identifier is translated into the new descriptor identifier
@@ -150,7 +199,7 @@ func (m *scipSymbolsMigrator) MigrateUp(ctx context.Context, uploadID int, tx *b
 		})
 	}
 
-	fmt.Printf("> updated %d rows and inserted %d symbols in %s\n", len(values), len(symbolNames), time.Since(start))
+	done("updated %d rows and inserted %d symbols", len(values), len(symbolNames))
 	return values, nil
 }
 
@@ -270,7 +319,7 @@ func setNextSymbolID(ctx context.Context, tx *basestore.Store, uploadID, id int)
 
 type inserterFunc func(ctx context.Context, symbolLookupInserter *batch.Inserter) error
 
-func withSymbolLookupInserter(ctx context.Context, tx *basestore.Store, uploadID int, f inserterFunc) error {
+func withSymbolLookupInserter(ctx context.Context, tx *basestore.Store, uploadID int, f inserterFunc, lap func(format string, args ...any)) error {
 	if err := tx.Exec(ctx, sqlf.Sprintf(`
 		CREATE TEMPORARY TABLE t_codeintel_scip_symbols_lookup(
 			name text NOT NULL,
@@ -302,16 +351,23 @@ func withSymbolLookupInserter(ctx context.Context, tx *basestore.Store, uploadID
 		return err
 	}
 
-	return tx.Exec(ctx, sqlf.Sprintf(`
+	lap("flushed %d times", symbolLookupInserter.NumFlushes)
+
+	if err := tx.Exec(ctx, sqlf.Sprintf(`
 		INSERT INTO codeintel_scip_symbols_lookup (id, upload_id, name, segment_type, segment_quality, parent_id)
 		SELECT id, %s, name, segment_type, segment_quality, parent_id
 		FROM t_codeintel_scip_symbols_lookup
 	`,
 		uploadID,
-	))
+	)); err != nil {
+		return err
+	}
+
+	lap("move temp")
+	return nil
 }
 
-func withSymbolLookupLeavesInserter(ctx context.Context, tx *basestore.Store, uploadID int, f inserterFunc) error {
+func withSymbolLookupLeavesInserter(ctx context.Context, tx *basestore.Store, uploadID int, f inserterFunc, lap func(format string, args ...any)) error {
 	if err := tx.Exec(ctx, sqlf.Sprintf(`
 		CREATE TEMPORARY TABLE t_codeintel_scip_symbols_lookup_leaves(
 			symbol_id integer NOT NULL,
@@ -339,13 +395,20 @@ func withSymbolLookupLeavesInserter(ctx context.Context, tx *basestore.Store, up
 		return err
 	}
 
-	return tx.Exec(ctx, sqlf.Sprintf(`
+	lap("flushed %d times", symbolLookupLeavesInserter.NumFlushes)
+
+	if err := tx.Exec(ctx, sqlf.Sprintf(`
 		INSERT INTO codeintel_scip_symbols_lookup_leaves (upload_id, symbol_id, descriptor_suffix_id, fuzzy_descriptor_suffix_id)
 		SELECT %s, symbol_id, descriptor_suffix_id, fuzzy_descriptor_suffix_id
 		FROM t_codeintel_scip_symbols_lookup_leaves
 	`,
 		uploadID,
-	))
+	)); err != nil {
+		return err
+	}
+
+	lap("move temp")
+	return nil
 }
 
 //
