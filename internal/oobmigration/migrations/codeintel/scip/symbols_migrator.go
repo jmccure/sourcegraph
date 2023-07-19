@@ -68,8 +68,9 @@ func (m *scipSymbolsMigrator) MigrateUp(ctx context.Context, uploadID int, tx *b
 	}
 	symbolIDs := flattenKeys(symbolIDMap)
 
-	// TODO
-	// Reconstruct the full symbol names for each of the symbol IDs in this batch
+	// Reconstruct the full symbol names for each of the symbol IDs in this batch.
+	// We pull the entire trie back from Postgres and reconstruct it in-memory as
+	// it's expensive to do the concatenation prior to sending it over the network.
 	trieNodes, err := scanTrieNodesByIDs(ctx, tx, uploadID, symbolIDs)
 	if err != nil {
 		return nil, err
