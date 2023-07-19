@@ -331,7 +331,7 @@ func (s dbLicenses) GetUserCountAlertSentAt(ctx context.Context, id string) (tim
 		ctx,
 		q.Query(sqlf.PostgresBindVar),
 		q.Args()...,
-	).Scan(&dbutil.NullTime{Time: &userCountAlertSentAt})
+	).Scan(dbutil.NullTime{Time: &userCountAlertSentAt})
 
 	return userCountAlertSentAt, err
 }

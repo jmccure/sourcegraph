@@ -30,6 +30,18 @@ func TestSendApproachingUserLimitAlert(t *testing.T) {
 	}
 
 	t.Run("sends correctly formatted email", func(t *testing.T) {
+		subStore := ps.NewDbSubscription(db)
+		subId, err := subStore.Create(ctx, user.ID, user.Username)
+		if err != nil {
+			t.Errorf("could not create subscription: %s", err)
+		}
+
+		licensesStore := ps.NewDbLicense(db)
+		licensesStore.Create(ctx, subId, "12345", 5, license.Info{
+			UserCount: 2,
+			ExpiresAt: time.Now().Add(14 * 24 * time.Hour),
+		})
+
 		var gotEmail txemail.Message
 		txemail.MockSend = func(ctx context.Context, message txemail.Message) error {
 			gotEmail = message
@@ -50,7 +62,7 @@ func TestSendApproachingUserLimitAlert(t *testing.T) {
 			MessageID: &messageId,
 			ReplyTo:   &replyTo,
 			Data: SetApproachingUserLimitTemplateData{
-				RemainingUsers: 4,
+				RemainingUsers: 1,
 			},
 		}
 
@@ -60,10 +72,10 @@ func TestSendApproachingUserLimitAlert(t *testing.T) {
 		assert.Equal(t, want.ReplyTo, gotEmail.ReplyTo)
 		assert.Equal(t, want.MessageID, gotEmail.MessageID)
 		gotEmailData := want.Data.(SetApproachingUserLimitTemplateData)
-		assert.Equal(t, 4, gotEmailData.RemainingUsers)
+		assert.Equal(t, 1, gotEmailData.RemainingUsers)
 	})
 
-	t.Run("does not run function if email sent within 7 days of current time", func(t *testing.T) {
+	t.Run("does not send email if email sent within 7 days of current time", func(t *testing.T) {
 		subStore := ps.NewDbSubscription(db)
 		subId, err := subStore.Create(ctx, user.ID, user.Username)
 		if err != nil {
@@ -71,13 +83,20 @@ func TestSendApproachingUserLimitAlert(t *testing.T) {
 		}
 
 		licensesStore := ps.NewDbLicense(db)
-		licensesStore.Create(ctx, subId, "12345", 5, license.Info{})
+		licensesStore.Create(ctx, subId, "12345", 5, license.Info{
+			UserCount: 2,
+			ExpiresAt: time.Now().Add(14 * 24 * time.Hour),
+		})
+
 
 		old := os.Stdout
 		r, w, _ := os.Pipe()
 		os.Stdout = w
 
 		err = sendApproachingUserLimitAlert(ctx, db)
+		if err != nil {
+			t.Errorf("could not run sendApproachingUserLimitAlert function: %s", err)
+		}
 
 		w.Close()
 		out, _ := ioutil.ReadAll(r)
@@ -85,6 +104,34 @@ func TestSendApproachingUserLimitAlert(t *testing.T) {
 
 		if string(out) != "email recently sent\n" {
 			t.Errorf("Expected 'email recently sent' to be printed, got %q", string(out))
+		}
+	})
+
+	t.Run("does not send email if user count is not approaching user limit", func(t *testing.T) {
+		subStore := ps.NewDbSubscription(db)
+		subId, err := subStore.Create(ctx, user.ID, user.Username)
+		if err != nil {
+			t.Errorf("could not create subscription: %s", err)
+		}
+
+		licensesStore := ps.NewDbLicense(db)
+		licensesStore.Create(ctx, subId, "12345", 10, license.Info{})
+
+		old := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
+		err = sendApproachingUserLimitAlert(ctx, db)
+		if err != nil {
+			t.Errorf("could not run sendApproachingUserLimitAlert function")
+		}
+
+		w.Close()
+		out, _ := ioutil.ReadAll(r)
+		os.Stdout = old
+
+		if string(out) != "User count on license within limit\n" {
+			t.Errorf("Expected 'User count on license within limit' to be printed, but it wasn't")
 		}
 	})
 }

@@ -20,6 +20,7 @@ func sendApproachingUserLimitAlert(ctx context.Context, db database.DB) error {
 		return errors.Wrap(err, "could not get list of db licenses")
 	}
 
+	// find current license
 	var licenseID string
 	for _, license := range licenses {
 		if license.RevokedAt == nil {
@@ -28,8 +29,14 @@ func sendApproachingUserLimitAlert(ctx context.Context, db database.DB) error {
 		}
 	}
 
+	// find last time alert was sent
 	userCountAlertSent, err := licenseDb.GetUserCountAlertSentAt(ctx, licenseID)
-	if time.Now().UTC().After(userCountAlertSent.UTC().Add(7 * 24 * time.Hour)) {
+	if err != nil {
+		return errors.Wrap(err, "could not get last time user account alert was sent")
+	}
+
+	// return if the time right now is 7 days
+	if !time.Now().UTC().After(userCountAlertSent.UTC().Add(7 * 24 * time.Hour)) {
 		log.Println("email recently sent")
 		return nil
 	}
@@ -45,7 +52,7 @@ func sendApproachingUserLimitAlert(ctx context.Context, db database.DB) error {
 	}
 
 	percentOfLimit := getPercentOfLimit(userCount, userLimit)
-	if percentOfLimit > 90 || userCount >= userLimit-5 {
+	if percentOfLimit >= 90 || userCount >= userLimit-2 {
 		siteAdminEmails, err := getSiteAdminEmails(ctx, db)
 		if err != nil {
 			return errors.Wrap(err, "could not get site admins")
@@ -68,6 +75,9 @@ func sendApproachingUserLimitAlert(ctx context.Context, db database.DB) error {
 			},
 		}); err != nil {
 			return errors.Wrap(err, "could not send email")
+		} else {
+			log.Println("User count on license within limit")
+			return nil
 		}
 	}
 
