@@ -1,0 +1,146 @@
+EXPLAIN ANALYZE
+-- EXPLAIN
+SELECT DISTINCT
+    l1.name AS scheme,
+    l2.name AS package_manager,
+    l3.name AS package_name,
+    l4.name AS package_version,
+    l5.name AS descriptor_namespace,
+    l6.name AS descriptor_suffix
+-- Initially fuzzy search (see WHERE clause)
+FROM codeintel_scip_symbols_lookup l7
+
+-- Join to symbols table, which will bridge DESCRIPTOR_SUFFIX+FUZZY (syntect) and DESCRIPTOR_SUFFIX+PRECISE (indexed)
+JOIN codeintel_scip_symbols_lookup_leaves ll ON ll.upload_id = l7.upload_id AND ll.fuzzy_descriptor_suffix_id = l7.id
+
+-- Follow parent path from descriptor l6->l5->l4->l3->l2->l1
+JOIN codeintel_scip_symbols_lookup l6 ON l6.upload_id = l7.upload_id AND l6.id = ll.descriptor_suffix_id -- DESCRIPTOR_SUFFIX
+JOIN codeintel_scip_symbols_lookup l5 ON l5.upload_id = l6.upload_id AND l5.id = l6.parent_id            -- DESCRIPTOR_NAMESPACE
+JOIN codeintel_scip_symbols_lookup l4 ON l4.upload_id = l6.upload_id AND l4.id = l5.parent_id            -- PACKAGE_VERSION
+JOIN codeintel_scip_symbols_lookup l3 ON l3.upload_id = l6.upload_id AND l3.id = l4.parent_id            -- PACKAGE_NAME
+JOIN codeintel_scip_symbols_lookup l2 ON l2.upload_id = l6.upload_id AND l2.id = l3.parent_id            -- PACKAGE_MANAGER
+JOIN codeintel_scip_symbols_lookup l1 ON l1.upload_id = l6.upload_id AND l1.id = l2.parent_id            -- SCHEME
+WHERE
+	l7.upload_id = ANY('{1742763,1742761,1742754,1742749,1742748,1742741,1742728,1742717,1742704,1742676,1742671,1742632,1742622,1742572,1742569,1742516,1742503,1742460,1742453,1742452,1742451,1742446,1742445,1742443,1742431,1742416,1742377,1742366,1742357,1742352}') AND
+	l7.segment_type = 'DESCRIPTOR_SUFFIX' AND
+	l7.segment_quality != 'PRECISE' AND
+	reverse(l7.name) ILIKE reverse('%existsSync().`.')
+;
+
+
+
+
+
+
+                                                                                                                                                                                                              QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Unique  (cost=37053.95..37107.76 rows=3075 width=168) (actual time=65.193..65.249 rows=3 loops=1)
+   ->  Sort  (cost=37053.95..37061.64 rows=3075 width=168) (actual time=65.191..65.198 rows=19 loops=1)
+         Sort Key: l1.name, l2.name, l3.name, l4.name, l5.name, l6.name
+         Sort Method: quicksort  Memory: 27kB
+         ->  Nested Loop  (cost=4.73..36875.81 rows=3075 width=168) (actual time=49.668..65.146 rows=19 loops=1)
+               Join Filter: (ll.upload_id = l1.upload_id)
+               ->  Nested Loop  (cost=4.15..30443.17 rows=2419 width=172) (actual time=49.661..65.094 rows=19 loops=1)
+                     Join Filter: (ll.upload_id = l2.upload_id)
+                     ->  Nested Loop  (cost=3.58..25382.69 rows=1903 width=140) (actual time=49.655..65.039 rows=19 loops=1)
+                           Join Filter: (ll.upload_id = l3.upload_id)
+                           ->  Nested Loop  (cost=3.00..21401.85 rows=1497 width=108) (actual time=49.649..64.987 rows=19 loops=1)
+                                 Join Filter: (ll.upload_id = l4.upload_id)
+                                 ->  Nested Loop  (cost=2.42..18269.30 rows=1178 width=76) (actual time=49.642..64.932 rows=19 loops=1)
+                                       Join Filter: (ll.upload_id = l5.upload_id)
+                                       ->  Nested Loop  (cost=1.85..15804.21 rows=927 width=44) (actual time=49.632..64.868 rows=19 loops=1)
+                                             ->  Nested Loop  (cost=1.27..13874.76 rows=729 width=12) (actual time=49.618..64.793 rows=19 loops=1)
+                                                   ->  Index Scan using codeintel_scip_symbols_lookup_reversed_descriptor_suffix_name on codeintel_scip_symbols_lookup l7  (cost=0.70..12539.58 rows=476 width=8) (actual time=49.590..64.717 rows=4 loops=1)
+                                                         Index Cond: ((upload_id = ANY ('{1742763,1742761,1742754,1742749,1742748,1742741,1742728,1742717,1742704,1742676,1742671,1742632,1742622,1742572,1742569,1742516,1742503,1742460,1742453,1742452,1742451,1742446,1742445,1742443,1742431,1742416,1742377,1742366,1742357,1742352}'::integer[])) AND (reverse(name) ~>=~ '.`.)('::text) AND (reverse(name) ~<~ '.`.))'::text))
+                                                         Filter: ((segment_quality <> 'PRECISE'::symbolnamesegmentquality) AND (reverse(name) ~~* '.`.)(cnySstsixe%'::text))
+                                                         Rows Removed by Filter: 15896
+                                                   ->  Index Scan using codeintel_scip_symbols_lookup_leaves_fuzzy_descriptor_suffix_id on codeintel_scip_symbols_lookup_leaves ll  (cost=0.57..2.79 rows=1 width=12) (actual time=0.012..0.013 rows=5 loops=4)
+                                                         Index Cond: ((upload_id = l7.upload_id) AND (fuzzy_descriptor_suffix_id = l7.id))
+                                             ->  Index Scan using codeintel_scip_symbols_lookup_id on codeintel_scip_symbols_lookup l6  (cost=0.57..2.65 rows=1 width=40) (actual time=0.003..0.003 rows=1 loops=19)
+                                                   Index Cond: ((upload_id = ll.upload_id) AND (id = ll.descriptor_suffix_id))
+                                       ->  Index Scan using codeintel_scip_symbols_lookup_id on codeintel_scip_symbols_lookup l5  (cost=0.57..2.65 rows=1 width=40) (actual time=0.002..0.002 rows=1 loops=19)
+                                             Index Cond: ((upload_id = l6.upload_id) AND (id = l6.parent_id))
+                                 ->  Index Scan using codeintel_scip_symbols_lookup_id on codeintel_scip_symbols_lookup l4  (cost=0.57..2.65 rows=1 width=40) (actual time=0.002..0.002 rows=1 loops=19)
+                                       Index Cond: ((upload_id = l5.upload_id) AND (id = l5.parent_id))
+                           ->  Index Scan using codeintel_scip_symbols_lookup_id on codeintel_scip_symbols_lookup l3  (cost=0.57..2.65 rows=1 width=40) (actual time=0.002..0.002 rows=1 loops=19)
+                                 Index Cond: ((upload_id = l4.upload_id) AND (id = l4.parent_id))
+                     ->  Index Scan using codeintel_scip_symbols_lookup_id on codeintel_scip_symbols_lookup l2  (cost=0.57..2.65 rows=1 width=40) (actual time=0.002..0.002 rows=1 loops=19)
+                           Index Cond: ((upload_id = l3.upload_id) AND (id = l3.parent_id))
+               ->  Index Scan using codeintel_scip_symbols_lookup_id on codeintel_scip_symbols_lookup l1  (cost=0.57..2.65 rows=1 width=36) (actual time=0.002..0.002 rows=1 loops=19)
+                     Index Cond: ((upload_id = l2.upload_id) AND (id = l2.parent_id))
+ Planning Time: 77.569 ms
+ Execution Time: 65.379 ms
+(36 rows)
+
+
+
+
+
+EXPLAIN ANALYZE
+-- EXPLAIN
+SELECT
+    ll.upload_id,
+    ll.symbol_id,
+    -- ROUGHLY reconstruct symbol names from parts
+    -- We don't want to do this as it ignores SCIP's escaping rules, but we only use this
+    -- value in a fairly inconsequential (diagnostic-only) path at the moment. We should
+    -- remove usage of this field altogether (or reconstruct it on the consumer side).
+    l1.name || ' ' || l2.name || ' ' || l3.name || ' ' || l4.name || ' ' || l5.name || l6.name AS symbol_name
+
+
+-- Initially match descriptor scoped to an upload
+FROM codeintel_scip_symbols_lookup l6
+
+-- Follow parent path l6->l5->l4->l3->l2->l1, filter out anything that doesn't match exploded symbol parts
+JOIN codeintel_scip_symbols_lookup l5 ON l5.upload_id = l6.upload_id AND l5.id = l6.parent_id -- AND l5.name = 'TODO'
+JOIN codeintel_scip_symbols_lookup l4 ON l4.upload_id = l6.upload_id AND l4.id = l5.parent_id -- AND l4.name = 'TODO'
+JOIN codeintel_scip_symbols_lookup l3 ON l3.upload_id = l6.upload_id AND l3.id = l4.parent_id -- AND l3.name = 'TODO'
+JOIN codeintel_scip_symbols_lookup l2 ON l2.upload_id = l6.upload_id AND l2.id = l3.parent_id -- AND l2.name = 'TODO'
+JOIN codeintel_scip_symbols_lookup l1 ON l1.upload_id = l6.upload_id AND l1.id = l2.parent_id -- AND l1.name = 'TODO'
+
+-- Find symbol identifier matching descriptor
+JOIN codeintel_scip_symbols_lookup_leaves ll ON ll.upload_id = l5.upload_id AND ll.descriptor_suffix_id = l6.id
+
+ WHERE
+    l6.upload_id = ANY('{1742763,1742761,1742754,1742749,1742748,1742741,1742728,1742717,1742704,1742676,1742671,1742632,1742622,1742572,1742569,1742516,1742503,1742460,1742453,1742452,1742451,1742446,1742445,1742443,1742431,1742416,1742377,1742366,1742357,1742352}') AND
+    l6.segment_type = 'DESCRIPTOR_SUFFIX' AND
+    l6.segment_quality != 'FUZZY' AND
+    reverse(l6.name) = reverse('`scip-typescript npm @material-ui/core 3.9.4 Modal/``Modal.d.ts``/ModalProps#disableAutoFocus.`.')
+;
+
+
+                                                                                                                                                                                                                                                                  QUERY PLAN
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Gather  (cost=1466.60..885102.98 rows=533658 width=40) (actual time=1.538..11.835 rows=1 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Nested Loop  (cost=466.60..830737.18 rows=222358 width=40) (actual time=0.212..0.217 rows=0 loops=3)
+         Join Filter: (l5.upload_id = l1.upload_id)
+         ->  Nested Loop  (cost=466.02..482827.42 rows=129983 width=172) (actual time=0.209..0.213 rows=0 loops=3)
+               Join Filter: (l5.upload_id = l2.upload_id)
+               ->  Nested Loop  (cost=465.45..282377.51 rows=75983 width=140) (actual time=0.207..0.210 rows=0 loops=3)
+                     Join Filter: (l5.upload_id = l3.upload_id)
+                     ->  Nested Loop  (cost=464.87..165198.88 rows=44418 width=108) (actual time=0.205..0.207 rows=0 loops=3)
+                           ->  Nested Loop  (cost=464.30..97025.46 rows=25965 width=76) (actual time=0.203..0.205 rows=0 loops=3)
+                                 ->  Nested Loop  (cost=463.72..54732.81 rows=15178 width=44) (actual time=0.198..0.199 rows=0 loops=3)
+                                       ->  Parallel Bitmap Heap Scan on codeintel_scip_symbols_lookup l6  (cost=463.15..27029.67 rows=9910 width=40) (actual time=0.190..0.191 rows=0 loops=3)
+                                             Recheck Cond: ((upload_id = ANY ('{1742763,1742761,1742754,1742749,1742748,1742741,1742728,1742717,1742704,1742676,1742671,1742632,1742622,1742572,1742569,1742516,1742503,1742460,1742453,1742452,1742451,1742446,1742445,1742443,1742431,1742416,1742377,1742366,1742357,1742352}'::integer[])) AND (reverse(name) = '.`.sucoFotuAelbasid#sporPladoM/``st.d.ladoM``/ladoM 4.9.3 eroc/iu-lairetam@ mpn tpircsepyt-pics`'::text) AND (segment_type = 'DESCRIPTOR_SUFFIX'::symbolnamesegmenttype))
+                                             Filter: (segment_quality <> 'FUZZY'::symbolnamesegmentquality)
+                                             Heap Blocks: exact=1
+                                             ->  Bitmap Index Scan on codeintel_scip_symbols_lookup_reversed_descriptor_suffix_name  (cost=0.00..457.20 rows=23821 width=0) (actual time=0.163..0.164 rows=1 loops=1)
+                                                   Index Cond: ((upload_id = ANY ('{1742763,1742761,1742754,1742749,1742748,1742741,1742728,1742717,1742704,1742676,1742671,1742632,1742622,1742572,1742569,1742516,1742503,1742460,1742453,1742452,1742451,1742446,1742445,1742443,1742431,1742416,1742377,1742366,1742357,1742352}'::integer[])) AND (reverse(name) = '.`.sucoFotuAelbasid#sporPladoM/``st.d.ladoM``/ladoM 4.9.3 eroc/iu-lairetam@ mpn tpircsepyt-pics`'::text))
+                                       ->  Index Scan using codeintel_scip_symbols_lookup_leaves_descriptor_suffix_id on codeintel_scip_symbols_lookup_leaves ll  (cost=0.57..2.79 rows=1 width=12) (actual time=0.014..0.015 rows=1 loops=1)
+                                             Index Cond: ((upload_id = l6.upload_id) AND (descriptor_suffix_id = l6.id))
+                                 ->  Index Scan using codeintel_scip_symbols_lookup_id on codeintel_scip_symbols_lookup l5  (cost=0.57..2.79 rows=1 width=40) (actual time=0.011..0.011 rows=1 loops=1)
+                                       Index Cond: ((upload_id = l6.upload_id) AND (id = l6.parent_id))
+                           ->  Index Scan using codeintel_scip_symbols_lookup_id on codeintel_scip_symbols_lookup l4  (cost=0.57..2.63 rows=1 width=40) (actual time=0.003..0.003 rows=1 loops=1)
+                                 Index Cond: ((upload_id = l5.upload_id) AND (id = l5.parent_id))
+                     ->  Index Scan using codeintel_scip_symbols_lookup_id on codeintel_scip_symbols_lookup l3  (cost=0.57..2.63 rows=1 width=40) (actual time=0.003..0.003 rows=1 loops=1)
+                           Index Cond: ((upload_id = l4.upload_id) AND (id = l4.parent_id))
+               ->  Index Scan using codeintel_scip_symbols_lookup_id on codeintel_scip_symbols_lookup l2  (cost=0.57..2.63 rows=1 width=40) (actual time=0.002..0.003 rows=1 loops=1)
+                     Index Cond: ((upload_id = l3.upload_id) AND (id = l3.parent_id))
+         ->  Index Scan using codeintel_scip_symbols_lookup_id on codeintel_scip_symbols_lookup l1  (cost=0.57..2.63 rows=1 width=36) (actual time=0.003..0.003 rows=1 loops=1)
+               Index Cond: ((upload_id = l2.upload_id) AND (id = l2.parent_id))
+ Planning Time: 23.304 ms
+ Execution Time: 11.981 ms
+(32 rows)

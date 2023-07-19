@@ -219,8 +219,7 @@ A mapping from SCIP [Symbol names](https://sourcegraph.com/search?q=context:%40s
  parent_id       | integer                  |           |          | 
 Indexes:
     "codeintel_scip_symbols_lookup_id" UNIQUE, btree (upload_id, id)
-    "codeintel_scip_symbols_lookup_descriptor_suffix" btree (upload_id, name) WHERE segment_type = 'DESCRIPTOR_SUFFIX'::symbolnamesegmenttype AND segment_quality <> 'FUZZY'::symbolnamesegmentquality
-    "codeintel_scip_symbols_lookup_fuzzy_descriptor_suffix" btree (upload_id, reverse(name) text_pattern_ops) WHERE segment_type = 'DESCRIPTOR_SUFFIX'::symbolnamesegmenttype AND segment_quality <> 'PRECISE'::symbolnamesegmentquality
+    "codeintel_scip_symbols_lookup_reversed_descriptor_suffix_name" btree (upload_id, reverse(name) text_pattern_ops) WHERE segment_type = 'DESCRIPTOR_SUFFIX'::symbolnamesegmenttype
 
 ```
 

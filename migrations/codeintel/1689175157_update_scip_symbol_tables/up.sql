@@ -10,13 +10,10 @@ CREATE TABLE IF NOT EXISTS codeintel_scip_symbols_lookup (
 -- Reconstruct names from leaf (descriptor) in tree
 CREATE UNIQUE INDEX IF NOT EXISTS codeintel_scip_symbols_lookup_id ON codeintel_scip_symbols_lookup(upload_id, id);
 
--- Search by exact descriptor suffix
-CREATE INDEX IF NOT EXISTS codeintel_scip_symbols_lookup_descriptor_suffix ON codeintel_scip_symbols_lookup(upload_id, name)
-    WHERE segment_type = 'DESCRIPTOR_SUFFIX' AND segment_quality != 'FUZZY';
-
--- Search by fuzzily for descriptor suffix
-CREATE INDEX IF NOT EXISTS codeintel_scip_symbols_lookup_fuzzy_descriptor_suffix ON codeintel_scip_symbols_lookup(upload_id, reverse(name) text_pattern_ops)
-    WHERE segment_type = 'DESCRIPTOR_SUFFIX' AND segment_quality != 'PRECISE';
+-- Search by descriptor suffix (supports fast exact + suffix match by comparing reversed string or wildcard)
+CREATE INDEX IF NOT EXISTS codeintel_scip_symbols_lookup_reversed_descriptor_suffix_name
+    ON codeintel_scip_symbols_lookup(upload_id, reverse(name) text_pattern_ops)
+    WHERE segment_type = 'DESCRIPTOR_SUFFIX';
 
 CREATE TABLE IF NOT EXISTS codeintel_scip_symbols_lookup_leaves (
     upload_id                   integer NOT NULL,

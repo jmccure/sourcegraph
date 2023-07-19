@@ -89,10 +89,11 @@ JOIN codeintel_scip_symbols_lookup l3 ON l3.upload_id = l6.upload_id AND l3.id =
 JOIN codeintel_scip_symbols_lookup l2 ON l2.upload_id = l6.upload_id AND l2.id = l3.parent_id            -- PACKAGE_MANAGER
 JOIN codeintel_scip_symbols_lookup l1 ON l1.upload_id = l6.upload_id AND l1.id = l2.parent_id            -- SCHEME
 WHERE
-	l7.upload_id = ANY(%s) AND
-	l7.segment_type = 'DESCRIPTOR_SUFFIX' AND
-	l7.segment_quality != 'PRECISE' AND
-	reverse(l7.name) ILIKE ANY(%s) -- TODO: ANY makes a bad query plan here
+	-- TODO: ANY makes a bad query plan here
+	-- Index conditions for "codeintel_scip_symbols_lookup_reversed_descriptor_suffix_name"
+	l7.upload_id = ANY(%s) AND l7.segment_type = 'DESCRIPTOR_SUFFIX' AND reverse(l7.name) ILIKE ANY(%s) AND
+	-- Post-index filter condition to ensure we haven't precise descriptors when we have an explicit fuzzy one
+	l7.segment_quality != 'PRECISE'
 `
 
 var scanExplodedSymbols = basestore.NewSliceScanner(func(s dbutil.Scanner) (*symbols.ExplodedSymbol, error) {
