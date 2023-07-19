@@ -29,6 +29,7 @@ All notable changes to Sourcegraph are documented in this file.
 ### Changed
 
 - The UI for license keys now displays more information about license validity. [#54990](https://github.com/sourcegraph/sourcegraph/pull/54990)
+- Site-admins can now list, view and edit all code monitors. [#54981](https://github.com/sourcegraph/sourcegraph/pull/54981)
 
 ## 5.1.3
 
