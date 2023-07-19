@@ -82,7 +82,7 @@ FROM codeintel_scip_symbols_lookup l7
 JOIN codeintel_scip_symbols_lookup_leaves ll ON ll.upload_id = l7.upload_id AND ll.fuzzy_descriptor_suffix_id = l7.id
 
 -- Follow parent path from descriptor l6->l5->l4->l3->l2->l1
-JOIN codeintel_scip_symbols_lookup l6 ON l6.upload_id = l6.upload_id AND l6.id = ll.descriptor_suffix_id -- DESCRIPTOR_SUFFIX
+JOIN codeintel_scip_symbols_lookup l6 ON l6.upload_id = l7.upload_id AND l6.id = ll.descriptor_suffix_id -- DESCRIPTOR_SUFFIX
 JOIN codeintel_scip_symbols_lookup l5 ON l5.upload_id = l6.upload_id AND l5.id = l6.parent_id            -- DESCRIPTOR_NAMESPACE
 JOIN codeintel_scip_symbols_lookup l4 ON l4.upload_id = l6.upload_id AND l4.id = l5.parent_id            -- PACKAGE_VERSION
 JOIN codeintel_scip_symbols_lookup l3 ON l3.upload_id = l6.upload_id AND l3.id = l4.parent_id            -- PACKAGE_NAME
@@ -92,7 +92,7 @@ WHERE
 	l7.upload_id = ANY(%s) AND
 	l7.segment_type = 'DESCRIPTOR_SUFFIX' AND
 	l7.segment_quality != 'PRECISE' AND
-	reverse(l7.name) ILIKE ANY(%s)
+	reverse(l7.name) ILIKE ANY(%s) -- TODO: ANY makes a bad query plan here
 `
 
 var scanExplodedSymbols = basestore.NewSliceScanner(func(s dbutil.Scanner) (*symbols.ExplodedSymbol, error) {
