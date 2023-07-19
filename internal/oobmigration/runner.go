@@ -401,21 +401,6 @@ func runMigrationFunction(ctx context.Context, store storeIface, migration *Migr
 		migrationFunc = runMigrationDown
 	}
 
-	// fmt.Printf("LAUNCH!\n")
-	// n := make(chan struct{}, 10000)
-	// defer close(n)
-
-	// p := pool.New().WithErrors().WithContext(ctx)
-	// for i := 0; i < 64; i++ {
-	// 	p.Go(func(ctx context.Context) error {
-	// 		for {
-	// 			select {
-	// 			case n <- struct{}{}:
-	// 			default:
-	// 				fmt.Printf("BREAK!\n")
-	// 				return nil
-	// 			}
-
 	if migrationErr := migrationFunc(ctx, migration, migrator, logger, operations); migrationErr != nil {
 		if !errors.Is(migrationErr, ctx.Err()) {
 			logger.Error("Failed to perform migration", log.Error(migrationErr), log.Int("migrationID", migration.ID))
@@ -430,18 +415,7 @@ func runMigrationFunction(ctx context.Context, store storeIface, migration *Migr
 		}
 	}
 
-	if err := updateProgress(ctx, store, migration, migrator); err != nil {
-		return err
-	}
-	// 		}
-	// 	})
-	// }
-
-	// if err := p.Wait(); err != nil {
-	// 	return err
-	// }
-
-	return nil
+	return updateProgress(ctx, store, migration, migrator)
 }
 
 // updateProgress invokes the Progress method on the given migrator, updates the Progress field of the

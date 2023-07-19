@@ -3,10 +3,10 @@ package scip
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/keegancsmith/sqlf"
@@ -57,33 +57,6 @@ func (m *scipSymbolsMigrator) ID() int                 { return 24 }
 func (m *scipSymbolsMigrator) Interval() time.Duration { return time.Second }
 
 func (m *scipSymbolsMigrator) MigrateUp(ctx context.Context, uploadID int, tx *basestore.Store, rows *sql.Rows) (_ [][]any, err error) {
-	// fmt.Printf("\t> B\n")
-	start := time.Now()
-	lapTimer := start
-	lapTimes := map[string]time.Duration{}
-	lap := func(format string, args ...any) {
-		now := time.Now()
-		lapTimes[fmt.Sprintf(format, args...)] = now.Sub(lapTimer)
-		lapTimer = now
-	}
-	done := func(format string, args ...any) {
-		lapNames := make([]string, 0, len(lapTimes))
-		for lapName := range lapTimes {
-			lapNames = append(lapNames, lapName)
-		}
-		sort.Slice(lapNames, func(i, j int) bool { return lapTimes[lapNames[i]] > lapTimes[lapNames[j]] })
-
-		// i := 0
-		// for _, name := range lapNames {
-		// 	t := lapTimes[name]
-		// 	if t > time.Millisecond*100 && i < 5 {
-		// 		i++
-		// 		fmt.Printf("\t\t%-10s\t%s\n", fmt.Sprintf("%s:", t), name)
-		// 	}
-		// }
-		// fmt.Printf("\t> %s:\t%s\n", time.Since(start), fmt.Sprintf(format, args...))
-	}
-
 	// Consume symbol_id/document_id pairs from the incoming rows
 	symbolInDocuments, err := readSymbolInDocuments(rows)
 	if err != nil {
@@ -95,37 +68,14 @@ func (m *scipSymbolsMigrator) MigrateUp(ctx context.Context, uploadID int, tx *b
 	}
 	symbolIDs := flattenKeys(symbolIDMap)
 
-	lap("read %d rows", len(symbolInDocuments))
-
-	// DEBUG
-	// if _, err := readSymbolNamesBySymbolIDs2(ctx, tx, uploadID, symbolIDs); err != nil {
-	// 	return nil, err
-	// }
-	// lap("+++ BASELINE OF %d SYMBOLS", len(symbolIDs))
-
+	// TODO
 	// Reconstruct the full symbol names for each of the symbol IDs in this batch
-	trieNodes, err := readSymbolNamesBySymbolIDs1(ctx, tx, uploadID, symbolIDs)
+	trieNodes, err := scanTrieNodesByIDs(ctx, tx, uploadID, symbolIDs)
 	if err != nil {
 		return nil, err
 	}
-
-	// Do dynamic programming or something fancy
-	symbolNamesByID := map[int]string{}
-	for _, symbolID := range symbolIDs {
-		bigName := ""
-		id := &symbolID
-		for id != nil {
-			n := trieNodes[*id]
-			bigName = n.name + bigName
-			id = n.parent
-		}
-
-		symbolNamesByID[symbolID] = bigName
-	}
-	lap("read %d symbols (nodes %d; %d initial symbol ids)", len(symbolNamesByID), len(trieNodes), len(symbolIDs))
-
+	symbolNamesByID := explodeTrie(trieNodes, symbolIDs)
 	symbolNames := flattenValues(symbolNamesByID)
-	lap("flatten %d symbol names", len(symbolNames))
 
 	// An upload's symbols may be processed over several batches, and each symbol
 	// identifier needs to be unique per upload, so we track the highest symbol
@@ -153,128 +103,56 @@ func (m *scipSymbolsMigrator) MigrateUp(ctx context.Context, uploadID int, tx *b
 		return nil, err
 	}
 
-	lap("constructed cache of %d items", len(cache))
-	buffer1 := make([][]any, 0, len(symbolNames)) // TODO
-	buffer2 := make([][]any, 0, len(symbolNames))
-	buffer3 := make([][]any, 0, len(symbolNames))
-
-	// EXTRACTED FOR DEBUGGING
-	visit := func(segmentType string, segmentQuality *string, name string, id int, parentID *int) error {
-		if segmentQuality == nil {
-			buffer1 = append(buffer1, []any{segmentType, name, id, parentID})
-		} else {
-			// ASSUMPTIONS GALORE!
-			if *segmentQuality == "BOTH" {
-				// BIG HONCHO, CHUNGUS AMONGUS
-				buffer3 = append(buffer3, []any{name, id, parentID})
-			} else {
-				buffer2 = append(buffer2, []any{segmentQuality, name, id, parentID})
-			}
-		}
-
-		return nil
-	}
-	if err := traverser(visit); err != nil {
-		return nil, err
-	}
-
-	lap("prepared %d/%d lookups", len(buffer1), len(buffer2))
-	rowsX := 0
-	rowsZ := 0
-	rowsZ2 := 0
-
+	// TODO
 	// Bulk insert the content of the tree / descriptor-no-suffix map
-	symbolNamePartInserter1 := func(ctx context.Context, symbolLookupInserter *batch.Inserter) error {
-		for _, values := range buffer1 {
-			rowsX++
-			if err := symbolLookupInserter.Insert(ctx, values...); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	}
-	symbolNamePartInserter2 := func(ctx context.Context, symbolLookupInserter *batch.Inserter) error {
-		for _, values := range buffer2 {
-			rowsZ++
-			if err := symbolLookupInserter.Insert(ctx, values...); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	}
-	symbolNamePartInserter3 := func(ctx context.Context, symbolLookupInserter *batch.Inserter) error {
-		for _, values := range buffer3 {
-			rowsZ2++
-			if err := symbolLookupInserter.Insert(ctx, values...); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	}
-
 	// In the same transaction but ouf-of-band from the row updates, batch-insert new
 	// symbol-lookup rows. These identifiers need to exist before the batch is complete.
-	if err := withSymbolLookupInserter1(ctx, tx, uploadID, symbolNamePartInserter1, func(format string, args ...any) { lap("lookups1: "+format, args...) }); err != nil {
-		return nil, err
-	}
-	if err := withSymbolLookupInserter2(ctx, tx, uploadID, symbolNamePartInserter2, func(format string, args ...any) { lap("lookups2: "+format, args...) }); err != nil {
-		return nil, err
-	}
-	if err := withSymbolLookupInserter3(ctx, tx, uploadID, symbolNamePartInserter3, func(format string, args ...any) { lap("lookups3: "+format, args...) }); err != nil {
+	if err := withSymbolLookupSegmentTypeInserter(ctx, tx, uploadID, func(ctx context.Context, segmentTypeInserter *batch.Inserter) error {
+		return withSymbolLookupSegmentQualityInserter(ctx, tx, uploadID, func(ctx context.Context, segmentQualityInserter *batch.Inserter) error {
+			return withSymbolLookupCommonSuffixInserter(ctx, tx, uploadID, func(ctx context.Context, commonSuffixInserter *batch.Inserter) error {
+				visit := func(segmentType string, segmentQuality *string, name string, id int, parentID *int) error {
+					if segmentQuality == nil {
+						return segmentTypeInserter.Insert(ctx, segmentType, name, id, parentID)
+					} else if *segmentQuality != "BOTH" {
+						return segmentQualityInserter.Insert(ctx, segmentQuality, name, id, parentID)
+					}
+
+					return commonSuffixInserter.Insert(ctx, name, id, parentID)
+				}
+
+				return traverser(visit)
+			})
+		})
+	}); err != nil {
 		return nil, err
 	}
 
-	lap("gathered %d/%d/%d rows for insertion", rowsX, rowsZ, rowsZ2)
-	rowsY := 0
-	rowsY2 := 0
-
+	// TODO
 	// Bulk insert descriptor/descriptor-no-suffix pairs with relations to their symbol
-	symbolRelationshipInserter1 := func(ctx context.Context, symbolLookupLeavesInserter *batch.Inserter) error {
-		for _, symbolInDocument := range symbolInDocuments {
-			symbolID := symbolInDocument.symbolID
-			ids := cache[symbolNamesByID[symbolID]]
-			if ids.descriptorSuffixID == ids.fuzzyDescriptorSuffixID {
-				continue
-			}
-
-			rowsY++
-			if err := symbolLookupLeavesInserter.Insert(ctx, symbolID, ids.descriptorSuffixID, ids.fuzzyDescriptorSuffixID); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	}
-	symbolRelationshipInserter2 := func(ctx context.Context, symbolLookupLeavesInserter *batch.Inserter) error {
-		for _, symbolInDocument := range symbolInDocuments {
-			symbolID := symbolInDocument.symbolID
-			ids := cache[symbolNamesByID[symbolID]]
-			if ids.descriptorSuffixID != ids.fuzzyDescriptorSuffixID {
-				continue
-			}
-
-			rowsY2++
-			if err := symbolLookupLeavesInserter.Insert(ctx, symbolID, ids.descriptorSuffixID); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	}
-
 	// In the same transaction but ouf-of-band from the row updates, batch-insert new
 	// symbol-lookup-leaves rows. These identifiers need to exist before the batch is complete.
-	if err := withSymbolLookupLeavesInserter1(ctx, tx, uploadID, symbolRelationshipInserter1, func(format string, args ...any) { lap("leaves1: "+format, args...) }); err != nil {
-		return nil, err
-	}
-	if err := withSymbolLookupLeavesInserter2(ctx, tx, uploadID, symbolRelationshipInserter2, func(format string, args ...any) { lap("leaves2: "+format, args...) }); err != nil {
-		return nil, err
-	}
+	if err := withSymbolLookupLeavesWithFuzzyInserter(ctx, tx, uploadID, func(ctx context.Context, withFuzzyInserter *batch.Inserter) error {
+		return withSymbolLookupLeavesWithoutFuzzyInserter(ctx, tx, uploadID, func(ctx context.Context, withoutFuzzyInserter *batch.Inserter) error {
+			for _, symbolInDocument := range symbolInDocuments {
+				symbolID := symbolInDocument.symbolID
+				ids := cache[symbolNamesByID[symbolID]]
 
-	lap("gathered %d/%d leaves for insertion", rowsY, rowsY2)
+				if ids.descriptorSuffixID == ids.fuzzyDescriptorSuffixID {
+					if err := withoutFuzzyInserter.Insert(ctx, symbolID, ids.descriptorSuffixID); err != nil {
+						return err
+					}
+				} else {
+					if err := withFuzzyInserter.Insert(ctx, symbolID, ids.descriptorSuffixID, ids.fuzzyDescriptorSuffixID); err != nil {
+						return err
+					}
+				}
+			}
+
+			return nil
+		})
+	}); err != nil {
+		return nil, err
+	}
 
 	// Construct the updated tuples for the symbols rows we have locked in this transaction.
 	// Each (original) symbol identifier is translated into the new descriptor identifier
@@ -289,7 +167,6 @@ func (m *scipSymbolsMigrator) MigrateUp(ctx context.Context, uploadID int, tx *b
 		})
 	}
 
-	done("updated %d rows and inserted %d symbols", len(values), len(symbolNames))
 	return values, nil
 }
 
@@ -344,8 +221,8 @@ type trieNode struct {
 	parent *int
 }
 
-func readSymbolNamesBySymbolIDs1(ctx context.Context, tx *basestore.Store, uploadID int, symbolIDs []int) (_ map[int]trieNode, err error) {
-	rows, err := tx.Query(ctx, sqlf.Sprintf(`
+func scanTrieNodesByIDs(ctx context.Context, tx *basestore.Store, uploadID int, symbolIDs []int) (map[int]trieNode, error) {
+	return scanTrieNodesByID(tx.Query(ctx, sqlf.Sprintf(`
 		WITH RECURSIVE
 		symbols(id, upload_id, name_segment, prefix_id) AS (
 			(
@@ -374,72 +251,21 @@ func readSymbolNamesBySymbolIDs1(ctx context.Context, tx *basestore.Store, uploa
 	`,
 		pq.Array(symbolIDs),
 		uploadID,
-	))
-	if err != nil {
-		return nil, err
-	}
-	defer func() { err = basestore.CloseRows(rows, err) }()
-
-	nodes := map[int]trieNode{}
-	for rows.Next() {
-		var id int
-		var name string
-		parent := -1
-
-		if err := rows.Scan(&id, &name, &dbutil.NullInt{N: &parent}); err != nil {
-			return nil, err
-		}
-
-		var p *int
-		if parent != -1 {
-			p = &parent
-		}
-		nodes[id] = trieNode{name, p}
-	}
-
-	//
-	// return scanSymbolNamesByID()
-	return nodes, nil
-}
-
-func readSymbolNamesBySymbolIDs2(ctx context.Context, tx *basestore.Store, uploadID int, symbolIDs []int) (_ map[int]string, err error) {
-	return scanSymbolNamesByID(tx.Query(ctx, sqlf.Sprintf(`
-		WITH RECURSIVE
-		symbols(id, upload_id, suffix, prefix_id) AS (
-			(
-				SELECT
-					ssn.id,
-					ssn.upload_id,
-					ssn.name_segment AS suffix,
-					ssn.prefix_id
-				FROM codeintel_scip_symbol_names ssn
-				WHERE
-					ssn.id = ANY(%s) AND
-					ssn.upload_id = %s
-			) UNION (
-				SELECT
-					s.id,
-					s.upload_id,
-					ssn.name_segment || s.suffix AS suffix,
-					ssn.prefix_id
-				FROM symbols s
-				JOIN codeintel_scip_symbol_names ssn ON
-					ssn.upload_id = s.upload_id AND
-					ssn.id = s.prefix_id
-			)
-		)
-		SELECT s.id, s.suffix AS symbol_name
-		FROM symbols s
-		WHERE s.prefix_id IS NULL
-	`,
-		pq.Array(symbolIDs),
-		uploadID,
 	)))
 }
 
-var scanSymbolNamesByID = basestore.NewMapScanner(func(s dbutil.Scanner) (symbolID int, symbolName string, _ error) {
-	err := s.Scan(&symbolID, &symbolName)
-	return symbolID, symbolName, err
+var scanTrieNodesByID = basestore.NewMapScanner(func(s dbutil.Scanner) (symbolID int, node trieNode, _ error) {
+	var (
+		name     string
+		parentID int = -1
+		px           = dbutil.NullInt{N: &parentID}
+	)
+	err := s.Scan(&symbolID, &name, &px)
+	var p *int
+	if parentID != -1 {
+		p = px.N // TODO - WTF
+	}
+	return symbolID, trieNode{name, p}, err
 })
 
 //
@@ -472,227 +298,199 @@ func setNextSymbolID(ctx context.Context, tx *basestore.Store, uploadID, id int)
 
 type inserterFunc func(ctx context.Context, symbolLookupInserter *batch.Inserter) error
 
-func withSymbolLookupInserter1(ctx context.Context, tx *basestore.Store, uploadID int, f inserterFunc, lap func(format string, args ...any)) error {
-	if err := tx.Exec(ctx, sqlf.Sprintf(`
-		CREATE TEMPORARY TABLE t_codeintel_scip_symbols_lookup1(
+func withInserter(
+	ctx context.Context,
+	tx *basestore.Store,
+	f inserterFunc,
+	createTempTableQuery, insertQuery *sqlf.Query,
+	symbolLookupInserter *batch.Inserter,
+) error {
+	if err := tx.Exec(ctx, createTempTableQuery); err != nil {
+		return err
+	}
+
+	if err := f(ctx, symbolLookupInserter); err != nil {
+		return err
+	}
+
+	if err := symbolLookupInserter.Flush(ctx); err != nil {
+		return err
+	}
+
+	return tx.Exec(ctx, insertQuery)
+}
+
+func withSymbolLookupSegmentTypeInserter(ctx context.Context, tx *basestore.Store, uploadID int, f inserterFunc) error {
+	createTempTableQuery := sqlf.Sprintf(`
+		CREATE TEMPORARY TABLE t_codeintel_scip_symbols_lookup_segment_type(
 			name text NOT NULL,
 			id integer NOT NULL,
 			segment_type SymbolNameSegmentType NOT NULL,
 			segment_quality SymbolNameSegmentQuality,
 			parent_id integer
 		) ON COMMIT DROP
-	`)); err != nil {
-		return err
-	}
+	`)
 
-	symbolLookupInserter := batch.NewInserter(
+	insertQuery := sqlf.Sprintf(`
+		INSERT INTO codeintel_scip_symbols_lookup (id, upload_id, name, segment_type, parent_id)
+		SELECT id, %s, name, segment_type, parent_id
+		FROM t_codeintel_scip_symbols_lookup_segment_type
+	`,
+		uploadID,
+	)
+
+	return withInserter(ctx, tx, f, createTempTableQuery, insertQuery, batch.NewInserter(
 		ctx,
 		tx.Handle(),
-		"t_codeintel_scip_symbols_lookup1",
+		"t_codeintel_scip_symbols_lookup_segment_type",
 		batch.MaxNumPostgresParameters,
 		"segment_type",
 		"name",
 		"id",
 		"parent_id",
-	)
-
-	if err := f(ctx, symbolLookupInserter); err != nil {
-		return err
-	}
-	if err := symbolLookupInserter.Flush(ctx); err != nil {
-		return err
-	}
-
-	lap("inserted (flushed %d times)", symbolLookupInserter.NumFlushes)
-
-	if err := tx.Exec(ctx, sqlf.Sprintf(`
-		INSERT INTO codeintel_scip_symbols_lookup (id, upload_id, name, segment_type, parent_id)
-		SELECT id, %s, name, segment_type, parent_id
-		FROM t_codeintel_scip_symbols_lookup1
-	`,
-		uploadID,
-	)); err != nil {
-		return err
-	}
-
-	lap("moving from temp table")
-	return nil
+	))
 }
 
-func withSymbolLookupInserter2(ctx context.Context, tx *basestore.Store, uploadID int, f inserterFunc, lap func(format string, args ...any)) error {
-	if err := tx.Exec(ctx, sqlf.Sprintf(`
-		CREATE TEMPORARY TABLE t_codeintel_scip_symbols_lookup2(
+func withSymbolLookupSegmentQualityInserter(ctx context.Context, tx *basestore.Store, uploadID int, f inserterFunc) error {
+	createTempTableQuery := sqlf.Sprintf(`
+		CREATE TEMPORARY TABLE t_codeintel_scip_symbols_lookup_segment_quality(
 			name text NOT NULL,
 			id integer NOT NULL,
 			segment_quality SymbolNameSegmentQuality,
 			parent_id integer
 		) ON COMMIT DROP
-	`)); err != nil {
-		return err
-	}
+	`)
 
-	symbolLookupInserter := batch.NewInserter(
+	insertQuery := sqlf.Sprintf(`
+		INSERT INTO codeintel_scip_symbols_lookup (id, upload_id, name, segment_type, segment_quality, parent_id)
+		SELECT id, %s, name, 'DESCRIPTOR_SUFFIX', segment_quality, parent_id
+		FROM t_codeintel_scip_symbols_lookup_segment_quality
+	`,
+		uploadID,
+	)
+
+	return withInserter(ctx, tx, f, createTempTableQuery, insertQuery, batch.NewInserter(
 		ctx,
 		tx.Handle(),
-		"t_codeintel_scip_symbols_lookup2",
+		"t_codeintel_scip_symbols_lookup_segment_quality",
 		batch.MaxNumPostgresParameters,
 		"segment_quality",
 		"name",
 		"id",
 		"parent_id",
-	)
-
-	if err := f(ctx, symbolLookupInserter); err != nil {
-		return err
-	}
-	if err := symbolLookupInserter.Flush(ctx); err != nil {
-		return err
-	}
-
-	lap("inserted (flushed %d times)", symbolLookupInserter.NumFlushes)
-
-	if err := tx.Exec(ctx, sqlf.Sprintf(`
-		INSERT INTO codeintel_scip_symbols_lookup (id, upload_id, name, segment_type, segment_quality, parent_id)
-		SELECT id, %s, name, 'DESCRIPTOR_SUFFIX', segment_quality, parent_id
-		FROM t_codeintel_scip_symbols_lookup2
-	`,
-		uploadID,
-	)); err != nil {
-		return err
-	}
-
-	lap("moving from temp table")
-	return nil
+	))
 }
 
-func withSymbolLookupInserter3(ctx context.Context, tx *basestore.Store, uploadID int, f inserterFunc, lap func(format string, args ...any)) error {
-	if err := tx.Exec(ctx, sqlf.Sprintf(`
-		CREATE TEMPORARY TABLE t_codeintel_scip_symbols_lookup3(
+func withSymbolLookupCommonSuffixInserter(ctx context.Context, tx *basestore.Store, uploadID int, f inserterFunc) error {
+	createTempTableQuery := sqlf.Sprintf(`
+		CREATE TEMPORARY TABLE t_codeintel_scip_symbols_lookup_common_suffix(
 			name text NOT NULL,
 			id integer NOT NULL,
 			parent_id integer
 		) ON COMMIT DROP
-	`)); err != nil {
-		return err
-	}
+	`)
 
-	symbolLookupInserter := batch.NewInserter(
+	insertQuery := sqlf.Sprintf(`
+		INSERT INTO codeintel_scip_symbols_lookup (id, upload_id, name, segment_type, segment_quality, parent_id)
+		SELECT id, %s, name, 'DESCRIPTOR_SUFFIX', 'BOTH', parent_id
+		FROM t_codeintel_scip_symbols_lookup_common_suffix
+	`,
+		uploadID,
+	)
+
+	return withInserter(ctx, tx, f, createTempTableQuery, insertQuery, batch.NewInserter(
 		ctx,
 		tx.Handle(),
-		"t_codeintel_scip_symbols_lookup3",
+		"t_codeintel_scip_symbols_lookup_common_suffix",
 		batch.MaxNumPostgresParameters,
 		"name",
 		"id",
 		"parent_id",
-	)
-
-	if err := f(ctx, symbolLookupInserter); err != nil {
-		return err
-	}
-	if err := symbolLookupInserter.Flush(ctx); err != nil {
-		return err
-	}
-
-	lap("inserted (flushed %d times)", symbolLookupInserter.NumFlushes)
-
-	if err := tx.Exec(ctx, sqlf.Sprintf(`
-		INSERT INTO codeintel_scip_symbols_lookup (id, upload_id, name, segment_type, segment_quality, parent_id)
-		SELECT id, %s, name, 'DESCRIPTOR_SUFFIX', 'BOTH', parent_id
-		FROM t_codeintel_scip_symbols_lookup3
-	`,
-		uploadID,
-	)); err != nil {
-		return err
-	}
-
-	lap("moving from temp table")
-	return nil
+	))
 }
 
-func withSymbolLookupLeavesInserter1(ctx context.Context, tx *basestore.Store, uploadID int, f inserterFunc, lap func(format string, args ...any)) error {
-	if err := tx.Exec(ctx, sqlf.Sprintf(`
-		CREATE TEMPORARY TABLE t_codeintel_scip_symbols_lookup_leaves1(
+func withSymbolLookupLeavesWithFuzzyInserter(ctx context.Context, tx *basestore.Store, uploadID int, f inserterFunc) error {
+	createTempTableQuery := sqlf.Sprintf(`
+		CREATE TEMPORARY TABLE t_codeintel_scip_symbols_lookup_leaves_with_fuzzy(
 			symbol_id integer NOT NULL,
 			descriptor_suffix_id integer NOT NULL,
 			fuzzy_descriptor_suffix_id integer NOT NULL
 		) ON COMMIT DROP
-	`)); err != nil {
-		return err
-	}
+	`)
 
-	symbolLookupLeavesInserter := batch.NewInserter(
+	insertQuery := sqlf.Sprintf(`
+		INSERT INTO codeintel_scip_symbols_lookup_leaves (upload_id, symbol_id, descriptor_suffix_id, fuzzy_descriptor_suffix_id)
+		SELECT %s, symbol_id, descriptor_suffix_id, fuzzy_descriptor_suffix_id
+		FROM t_codeintel_scip_symbols_lookup_leaves_with_fuzzy
+	`,
+		uploadID,
+	)
+
+	return withInserter(ctx, tx, f, createTempTableQuery, insertQuery, batch.NewInserter(
 		ctx,
 		tx.Handle(),
-		"t_codeintel_scip_symbols_lookup_leaves1",
+		"t_codeintel_scip_symbols_lookup_leaves_with_fuzzy",
 		batch.MaxNumPostgresParameters,
 		"symbol_id",
 		"descriptor_suffix_id",
 		"fuzzy_descriptor_suffix_id",
-	)
-
-	if err := f(ctx, symbolLookupLeavesInserter); err != nil {
-		return err
-	}
-	if err := symbolLookupLeavesInserter.Flush(ctx); err != nil {
-		return err
-	}
-
-	lap("flushed %d times", symbolLookupLeavesInserter.NumFlushes)
-
-	if err := tx.Exec(ctx, sqlf.Sprintf(`
-		INSERT INTO codeintel_scip_symbols_lookup_leaves (upload_id, symbol_id, descriptor_suffix_id, fuzzy_descriptor_suffix_id)
-		SELECT %s, symbol_id, descriptor_suffix_id, fuzzy_descriptor_suffix_id
-		FROM t_codeintel_scip_symbols_lookup_leaves1
-	`,
-		uploadID,
-	)); err != nil {
-		return err
-	}
-
-	lap("move temp")
-	return nil
+	))
 }
 
-func withSymbolLookupLeavesInserter2(ctx context.Context, tx *basestore.Store, uploadID int, f inserterFunc, lap func(format string, args ...any)) error {
-	if err := tx.Exec(ctx, sqlf.Sprintf(`
-		CREATE TEMPORARY TABLE t_codeintel_scip_symbols_lookup_leaves2(
+func withSymbolLookupLeavesWithoutFuzzyInserter(ctx context.Context, tx *basestore.Store, uploadID int, f inserterFunc) error {
+	createTempTableQuery := sqlf.Sprintf(`
+		CREATE TEMPORARY TABLE t_codeintel_scip_symbols_lookup_leaves_without_fuzzy(
 			symbol_id integer NOT NULL,
 			descriptor_suffix_id integer NOT NULL
 		) ON COMMIT DROP
-	`)); err != nil {
-		return err
-	}
+	`)
 
-	symbolLookupLeavesInserter := batch.NewInserter(
+	insertQuery := sqlf.Sprintf(`
+		INSERT INTO codeintel_scip_symbols_lookup_leaves (upload_id, symbol_id, descriptor_suffix_id, fuzzy_descriptor_suffix_id)
+		SELECT %s, symbol_id, descriptor_suffix_id, descriptor_suffix_id
+		FROM t_codeintel_scip_symbols_lookup_leaves_without_fuzzy
+	`,
+		uploadID,
+	)
+
+	return withInserter(ctx, tx, f, createTempTableQuery, insertQuery, batch.NewInserter(
 		ctx,
 		tx.Handle(),
-		"t_codeintel_scip_symbols_lookup_leaves2",
+		"t_codeintel_scip_symbols_lookup_leaves_without_fuzzy",
 		batch.MaxNumPostgresParameters,
 		"symbol_id",
 		"descriptor_suffix_id",
+	))
+}
+
+//
+//
+
+func explodeTrie(nodes map[int]trieNode, symbolIDs []int) map[int]string {
+	symbolNamesByID := make(map[int]string, len(symbolIDs))
+	for _, symbolID := range symbolIDs {
+		symbolNamesByID[symbolID] = queryTrie(nodes, symbolID)
+	}
+
+	return symbolNamesByID
+}
+
+func queryTrie(nodes map[int]trieNode, symbolID int) string {
+	var (
+		ids []int
+		b   = &strings.Builder{}
 	)
 
-	if err := f(ctx, symbolLookupLeavesInserter); err != nil {
-		return err
-	}
-	if err := symbolLookupLeavesInserter.Flush(ctx); err != nil {
-		return err
+	for id := &symbolID; id != nil; id = nodes[*id].parent {
+		ids = append(ids, *id)
+		b.Grow(len(nodes[*id].name))
 	}
 
-	lap("flushed %d times", symbolLookupLeavesInserter.NumFlushes)
-
-	if err := tx.Exec(ctx, sqlf.Sprintf(`
-		INSERT INTO codeintel_scip_symbols_lookup_leaves (upload_id, symbol_id, descriptor_suffix_id, fuzzy_descriptor_suffix_id)
-		SELECT %s, symbol_id, descriptor_suffix_id, descriptor_suffix_id
-		FROM t_codeintel_scip_symbols_lookup_leaves2
-	`,
-		uploadID,
-	)); err != nil {
-		return err
+	for i := len(ids) - 1; i >= 0; i-- {
+		b.WriteString(nodes[ids[i]].name)
 	}
 
-	lap("move temp")
-	return nil
+	return b.String()
 }
 
 //
