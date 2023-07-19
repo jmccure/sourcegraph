@@ -137,8 +137,8 @@ func withSymbolLookupLeavesWithoutFuzzyInserter(ctx context.Context, tx *basesto
 	`)
 
 	insertQuery := sqlf.Sprintf(`
-		INSERT INTO codeintel_scip_symbols_lookup_leaves (upload_id, symbol_id, descriptor_suffix_id, fuzzy_descriptor_suffix_id)
-		SELECT %s, symbol_id, descriptor_suffix_id, descriptor_suffix_id
+		INSERT INTO codeintel_scip_symbols_lookup_leaves (upload_id, symbol_id, descriptor_suffix_id)
+		SELECT %s, symbol_id, descriptor_suffix_id
 		FROM t_codeintel_scip_symbols_lookup_leaves_without_fuzzy
 	`,
 		uploadID,

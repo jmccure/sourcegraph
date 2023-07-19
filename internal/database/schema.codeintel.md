@@ -230,10 +230,10 @@ Indexes:
  upload_id                  | integer |           | not null | 
  symbol_id                  | integer |           | not null | 
  descriptor_suffix_id       | integer |           | not null | 
- fuzzy_descriptor_suffix_id | integer |           | not null | 
+ fuzzy_descriptor_suffix_id | integer |           |          | 
 Indexes:
     "codeintel_scip_symbols_lookup_leaves_descriptor_suffix_id" btree (upload_id, descriptor_suffix_id)
-    "codeintel_scip_symbols_lookup_leaves_fuzzy_descriptor_suffix_id" btree (upload_id, fuzzy_descriptor_suffix_id)
+    "codeintel_scip_symbols_lookup_leaves_fuzzy_descriptor_suffix_id" btree (upload_id, fuzzy_descriptor_suffix_id) WHERE fuzzy_descriptor_suffix_id IS NOT NULL
 
 ```
 
