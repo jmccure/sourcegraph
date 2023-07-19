@@ -188,11 +188,7 @@ func (m *migrator) Up(ctx context.Context) (err error) {
 		p.Go(func() error { return m.up(ctx) })
 	}
 
-	if err := p.Wait(); err != nil {
-		return err
-	}
-
-	return nil
+	return p.Wait()
 }
 
 func (m *migrator) up(ctx context.Context) (err error) {
